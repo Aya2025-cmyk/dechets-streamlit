@@ -8,4 +8,5 @@ ultralytics>=8.0.0
 torch>=2.0.0
 plotly>=5.17.0
 pandas>=2.0.0
+opencv-python-headless
 python-dotenv>=1.0.0
