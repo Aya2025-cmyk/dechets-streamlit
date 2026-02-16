@@ -4,7 +4,12 @@ Interface web avec lien public
 """
 
 import streamlit as st
-import cv2
+#import cv2
+try:
+    import cv2
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "opencv-python-headless"])
+    import cv2
 import numpy as np
 from PIL import Image
 import tempfile
@@ -483,4 +488,5 @@ with st.sidebar:
         2. Connectez-vous sur share.streamlit.io
         3. Sélectionnez ce repository
         4. Cliquez sur Deploy
+
         """)
