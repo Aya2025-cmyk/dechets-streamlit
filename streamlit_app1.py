@@ -1,16 +1,13 @@
 """
 Application Streamlit pour la détection de déchets
-Version simplifiée et robuste pour le déploiement
+Version avec modèle personnalisé entraîné
 """
 
 import streamlit as st
 import numpy as np
 from PIL import Image
-import tempfile
 import os
-import sys
 from pathlib import Path
-import time
 
 # Configuration de la page
 st.set_page_config(
@@ -45,17 +42,20 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### ℹ️ Info")
     st.markdown("Projet Computer Vision - L3 Big Data")
-    st.markdown("Modèle: YOLOv8n")
+    st.markdown("Modèle: **Personnalisé - Entraîné sur dataset de déchets**")
 
-# Chargement du modèle (avec cache et gestion d'erreurs)
+# Chargement du modèle (avec cache)
 @st.cache_resource
 def load_model():
-    """Charge le modèle YOLO avec gestion d'erreurs"""
+    """Charge le modèle YOLO personnalisé"""
     try:
         from ultralytics import YOLO
         
-        # Essayer de charger un modèle local, sinon utiliser le modèle par défaut
+        # PRIORITÉ À VOTRE MODÈLE ENTRAÎNÉ
         model_paths = [
+            "models/custom/waste_detector.pt",      # VOTRE MODÈLE ENTRAÎNÉ
+            "runs/detect/waste_detection/weights/last.pt",
+            "runs/detect/waste_detection/weights/best.pt",
             "models/pretrained/yolov8n.pt",
             "yolov8n.pt"
         ]
@@ -64,13 +64,18 @@ def load_model():
             try:
                 if os.path.exists(path):
                     model = YOLO(path)
-                    st.sidebar.success(f"✅ Modèle chargé: {path}")
+                    st.sidebar.success(f"✅ Modèle chargé: {os.path.basename(path)}")
+                    
+                    # Afficher le nombre de classes
+                    if hasattr(model, 'names'):
+                        st.sidebar.info(f"📊 {len(model.names)} classes détectables")
                     return model
-            except:
+            except Exception as e:
+                st.sidebar.warning(f"⚠️ Impossible de charger {path}: {e}")
                 continue
         
-        # Dernier recours : télécharger
-        st.sidebar.info("📥 Téléchargement du modèle YOLOv8n...")
+        # Dernier recours
+        st.sidebar.info("📥 Téléchargement du modèle par défaut...")
         model = YOLO("yolov8n.pt")
         return model
         
@@ -86,7 +91,10 @@ if model is None:
     st.error("""
     ❌ Impossible de charger le modèle.
     
-    Vérifiez que les dépendances sont installées :
+    Vérifiez que :
+    1. Les dépendances sont installées
+    2. Le fichier de modèle existe dans `models/custom/`
+    
     ```
     pip install ultralytics opencv-python-headless
     ```
@@ -102,18 +110,10 @@ uploaded_file = st.file_uploader(
     type=['jpg', 'jpeg', 'png', 'webp']
 )
 
-# Image exemple (optionnel)
-use_example = st.checkbox("Utiliser une image de test")
-
-if uploaded_file is not None or use_example:
+if uploaded_file is not None:
     
     # Charger l'image
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-    else:
-        # Créer une image de test
-        image = Image.new('RGB', (640, 480), color='white')
-        st.info("Image de test (aucune détection réelle)")
+    image = Image.open(uploaded_file)
     
     # Afficher l'image originale
     col1, col2 = st.columns(2)
@@ -148,22 +148,42 @@ if uploaded_file is not None or use_example:
                         # Afficher les détails
                         st.success(f"✅ {n_detections} objet(s) détecté(s)")
                         
+                        # Récupérer les noms des classes du modèle
+                        class_names = model.names if hasattr(model, 'names') else {0: 'recyclable', 1: 'organic', 2: 'non_recyclable'}
+                        
                         # Tableau des détections
                         detections_data = []
-                        for box in results.boxes:
+                        for i, box in enumerate(results.boxes):
                             class_id = int(box.cls[0])
                             conf = float(box.conf[0])
                             
-                            classes = ['♻️ Recyclable', '🌱 Organique', '🚯 Non recyclable']
-                            conseils = ['Poubelle jaune', 'Compost', 'Poubelle ordinaire']
+                            # Mapping des classes avec emojis et conseils
+                            class_mapping = {
+                                0: {"name": "♻️ Recyclable", "conseil": "Poubelle jaune"},
+                                1: {"name": "🌱 Organique", "conseil": "Compost"},
+                                2: {"name": "🚯 Non recyclable", "conseil": "Poubelle ordinaire"}
+                            }
+                            
+                            info = class_mapping.get(class_id, {"name": f"Classe {class_id}", "conseil": "À vérifier"})
                             
                             detections_data.append({
-                                "Classe": classes[class_id] if class_id < len(classes) else "Inconnu",
+                                "Objet": f"{i+1}",
+                                "Classe": info["name"],
                                 "Confiance": f"{conf:.1%}",
-                                "Conseil": conseils[class_id] if class_id < len(conseils) else "-"
+                                "Conseil": info["conseil"]
                             })
                         
                         st.table(detections_data)
+                        
+                        # Statistiques rapides
+                        recyclable = sum(1 for box in results.boxes if int(box.cls[0]) == 0)
+                        organic = sum(1 for box in results.boxes if int(box.cls[0]) == 1)
+                        non_recyclable = sum(1 for box in results.boxes if int(box.cls[0]) == 2)
+                        
+                        col_a, col_b, col_c = st.columns(3)
+                        col_a.metric("♻️ Recyclable", recyclable)
+                        col_b.metric("🌱 Organique", organic)
+                        col_c.metric("🚯 Non recyclable", non_recyclable)
                         
                     else:
                         st.warning("⚠️ Aucun objet détecté")
@@ -173,7 +193,8 @@ if uploaded_file is not None or use_example:
             except Exception as e:
                 st.error(f"❌ Erreur lors de la détection: {e}")
                 import traceback
-                st.code(traceback.format_exc())
+                with st.expander("Détails de l'erreur"):
+                    st.code(traceback.format_exc())
 
 # Pied de page
 st.markdown("---")
@@ -181,10 +202,8 @@ st.markdown(
     """
     <div style='text-align: center; color: #666;'>
     Projet réalisé dans le cadre du cours d'Initiation à la Computer Vision - L3 Big Data<br>
-    © 2026
+    © 2026 - Modèle entraîné sur dataset personnalisé
     </div>
     """,
     unsafe_allow_html=True
-
 )
-
