@@ -52,7 +52,7 @@ with st.sidebar:
 def load_model():
     """Charge le modèle YOLO avec gestion d'erreurs"""
     try:
-        from ultralytics import YOLO
+        #from ultralytics import YOLO
         
         # Essayer de charger un modèle local, sinon utiliser le modèle par défaut
         model_paths = [
@@ -185,4 +185,5 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
+
 )
